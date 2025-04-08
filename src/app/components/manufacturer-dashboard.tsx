@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/contexts/AuthContext"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { BarChart3, Package, QrCode, Plus, Search, Download, Filter, MoreVertical, LogOut, User } from "lucide-react"
+import { BarChart3, Package, QrCode, Plus, Search, Download, Filter, MoreVertical, LogOut, User, Wallet, ChevronDown } from "lucide-react"
+import { useContract, useAddress, useDisconnect, useConnectionStatus, ConnectWallet } from "@thirdweb-dev/react"
 import ProtectedRoute from "@/app/components/ProtectedRoute"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,6 +22,12 @@ export default function ManufacturerDashboard() {
   const [activeTab, setActiveTab] = useState("overview")
   const [userName, setUserName] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  
+  const address = useAddress()
+  const connectionStatus = useConnectionStatus()
+  const disconnect = useDisconnect()
+  const { contract } = useContract("0x7f0248CD607633D0EfEC8d4C3C013fbaf71CC804")
+
   const [productName, setProductName] = useState("")
   const [batchNumber, setBatchNumber] = useState("")
   const [sequence, setSequence] = useState("")
@@ -80,13 +87,34 @@ export default function ManufacturerDashboard() {
             <p className="text-sm" style={{ color: "#7A5197" }}>Manufacturer Dashboard</p>
           </div>
           <div className="flex items-center gap-4">
-            <Button 
-              variant="outline" 
-              className="cursor-pointer"
-              style={{ borderColor: "#BB5098", color: "#7A5197" }}
-            >
-              Help
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="cursor-pointer"
+                  style={{ borderColor: "#BB5098", color: "#7A5197" }}
+                >
+                  <Wallet className="mr-2 h-4 w-4" />
+                  {connectionStatus === "connected" ? address?.slice(0, 6) + "..." + address?.slice(-4) : "Connect Wallet"}
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-white">
+                {connectionStatus !== "connected" ? (
+                  <ConnectWallet theme="light" />
+                ) : (
+                  <>
+                    <DropdownMenuItem>
+                      <span className="text-xs break-all text-gray-500">{address}</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => disconnect()} className="text-red-600">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Disconnect
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <div className="relative">
               <div
                 className="flex items-center gap-2 cursor-pointer"
