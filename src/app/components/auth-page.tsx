@@ -28,6 +28,7 @@ export default function AuthPage() {
   const [error, setError] = useState("")
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
+  const [manufacturerName, setManufacturerName] = useState("")
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,16 +64,18 @@ export default function AuthPage() {
         throw new Error("Passwords do not match")
       }
 
-      await signUp(email, password, role)
-      const userDoc = await getDoc(doc(db, "users", auth.currentUser!.uid))
-      
-      // Store additional user details in Firestore
-      await setDoc(doc(db, "users", auth.currentUser!.uid), {
-        email,
-        role,
-        firstName,
-        lastName,
-        createdAt: new Date().toISOString()
+      if (role === "customer" && (!firstName || !lastName)) {
+        throw new Error("Please fill in all required fields")
+      }
+
+      if (role === "manufacturer" && !manufacturerName) {
+        throw new Error("Please enter manufacturer name")
+      }
+
+      await signUp(email, password, role, {
+        firstName: role === "customer" ? firstName : undefined,
+        lastName: role === "customer" ? lastName : undefined,
+        manufacturerName: role === "manufacturer" ? manufacturerName : undefined
       })
 
       if (role === "customer") {
@@ -201,32 +204,65 @@ export default function AuthPage() {
 
             <TabsContent value="register">
               <form onSubmit={handleRegister} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="first-name" style={{ color: "#5344A9" }}>
-                      First Name
-                    </Label>
-                    <Input
-                      id="first-name"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      className="cursor-text"
-                      style={{ borderColor: "#BB5098" }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="last-name" style={{ color: "#5344A9" }}>
-                      Last Name
-                    </Label>
-                    <Input
-                      id="last-name"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      className="cursor-text"
-                      style={{ borderColor: "#BB5098" }}
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role" style={{ color: "#5344A9" }}>
+                    Account Type
+                  </Label>
+                  <select
+                    id="role"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2"
+                    style={{ borderColor: "#BB5098" }}
+                    disabled={isLoading}
+                  >
+                    <option value="customer">Customer</option>
+                    <option value="manufacturer">Manufacturer</option>
+                  </select>
                 </div>
+
+                {role === "customer" ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="first-name" style={{ color: "#5344A9" }}>
+                        First Name
+                      </Label>
+                      <Input
+                        id="first-name"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        className="cursor-text"
+                        style={{ borderColor: "#BB5098" }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="last-name" style={{ color: "#5344A9" }}>
+                        Last Name
+                      </Label>
+                      <Input
+                        id="last-name"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        className="cursor-text"
+                        style={{ borderColor: "#BB5098" }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="manufacturer-name" style={{ color: "#5344A9" }}>
+                      Manufacturer Name
+                    </Label>
+                    <Input
+                      id="manufacturer-name"
+                      value={manufacturerName}
+                      onChange={(e) => setManufacturerName(e.target.value)}
+                      className="cursor-text"
+                      style={{ borderColor: "#BB5098" }}
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="register-email" style={{ color: "#5344A9" }}>
                     Email
@@ -247,23 +283,6 @@ export default function AuthPage() {
                       style={{ borderColor: "#BB5098" }}
                     />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="role" style={{ color: "#5344A9" }}>
-                    Account Type
-                  </Label>
-                  <select
-                    id="role"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="w-full rounded-md border px-3 py-2"
-                    style={{ borderColor: "#BB5098" }}
-                    disabled={isLoading}
-                  >
-                    <option value="customer">Customer</option>
-                    <option value="manufacturer">Manufacturer</option>
-                  </select>
                 </div>
 
                 <div className="space-y-2">

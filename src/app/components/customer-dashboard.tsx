@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/contexts/AuthContext"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { useContract, useAddress, useDisconnect, useConnectionStatus, ConnectWallet } from "@thirdweb-dev/react"
+import { useContract, useAddress, useDisconnect, useConnectionStatus, useConnect, useWallet, metamaskWallet, coinbaseWallet, walletConnect } from "@thirdweb-dev/react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -26,15 +26,31 @@ export default function CustomerDashboard() {
   const [userName, setUserName] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [productId, setProductId] = useState("")
-  const [verificationStatus, setVerificationStatus] = useState<"neutral" | "not-registered" | "not-claimed" | "claimed-by-other" | "claimed-by-self" | "registered-by-self">("neutral")
+  const [verificationStatus, setVerificationStatus] = useState<
+    | "neutral"
+    | "not-registered"
+    | "not-claimed"
+    | "claimed-by-other"
+    | "claimed-by-self"
+    | "registered-by-self"
+  >("neutral")
   const [productDetails, setProductDetails] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [ownedProducts, setOwnedProducts] = useState<string[]>([])
+  const [ownedProductDetails, setOwnedProductDetails] = useState<{[key: string]: any}>({})
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false)
   
   const address = useAddress()
   const connectionStatus = useConnectionStatus()
   const disconnect = useDisconnect()
-  const { contract } = useContract("0xe7d10cF2ed92255e0Ec0dcc99DC2277f41A664C9")
+  const connect = useConnect()
+  const { contract } = useContract("0x42452B6b3327197015f6466DA3680137645bf852")
+
+  const wallets = [
+    metamaskWallet(),
+    coinbaseWallet(),
+    walletConnect()
+  ]
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -55,6 +71,14 @@ export default function CustomerDashboard() {
         try {
           const products = await contract.call("getOwnerProducts", [address])
           setOwnedProducts(products)
+          
+          // Fetch details for each product
+          const productsData: {[key: string]: any} = {}
+          for (const productId of products) {
+            const product = await contract.call("products", [productId])
+            productsData[productId] = product
+          }
+          setOwnedProductDetails(productsData)
         } catch (err) {
           console.error("Error fetching owned products:", err)
         }
@@ -62,6 +86,16 @@ export default function CustomerDashboard() {
     }
     fetchOwnedProducts()
   }, [contract, address])
+
+  useEffect(() => {
+    if (!address) {
+      setOwnedProducts([])
+      setOwnedProductDetails({})
+      setProductDetails(null)
+      setVerificationStatus("neutral")
+      setProductId("")
+    }
+  }, [address])
 
   const handleVerifyProduct = async () => {
     if (!contract || !address) {
@@ -119,8 +153,10 @@ export default function CustomerDashboard() {
       const products = await contract.call("getOwnerProducts", [address])
       setOwnedProducts(products)
       
-      // Refresh verification status
-      await handleVerifyProduct()
+      // Update verification status to claimed-by-self
+      const product = await contract.call("products", [productId])
+      setProductDetails(product)
+      setVerificationStatus("claimed-by-self")
     } catch (err) {
       console.error("Error claiming product:", err)
       toast.error("Failed to claim product. Please try again.")
@@ -131,10 +167,50 @@ export default function CustomerDashboard() {
 
   const handleLogout = async () => {
     try {
+      // Disconnect wallet first if connected
+      if (address) {
+        await disconnect()
+        setOwnedProducts([])
+        setOwnedProductDetails({})
+        setProductDetails(null)
+        setVerificationStatus("neutral")
+        setProductId("")
+      }
+      // Then logout from Firebase
       await logout()
       router.push("/")
     } catch (error) {
       console.error("Logout error:", error)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    try {
+      await disconnect()
+      setOwnedProducts([])
+      setOwnedProductDetails({})
+      setProductDetails(null)
+      setVerificationStatus("neutral")
+      setProductId("")
+    } catch (error) {
+      console.error("Error disconnecting wallet:", error)
+    }
+  }
+
+  const handleConnect = async (wallet: any) => {
+    try {
+      if (wallet.id === "metamask") {
+        // Request account access and show account selector
+        await window.ethereum?.request({
+          method: 'wallet_requestPermissions',
+          params: [{ eth_accounts: {} }],
+        });
+      }
+      await connect(wallet)
+      setIsWalletModalOpen(false)
+    } catch (error) {
+      console.error("Error connecting wallet:", error)
+      toast.error("Failed to connect wallet")
     }
   }
 
@@ -163,25 +239,26 @@ export default function CustomerDashboard() {
                     <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-white shadow-md border rounded-md">
+                <DropdownMenuContent align="end" className="bg-white shadow-md border rounded-md p-2 min-w-[200px]">
                   {connectionStatus !== "connected" ? (
-                    <ConnectWallet 
-                      theme="light"
-                      btnTitle="Connect Wallet"
-                      modalTitle="Connect Your Wallet"
-                      modalSize="wide"
-                      welcomeScreen={{
-                        title: "Connect Your Wallet",
-                        subtitle: "Connect your wallet to interact with TrueTag"
-                      }}
-                      modalTitleIconUrl="/truetag-logo.png"
-                    />
+                    <>
+                      {wallets.map((wallet) => (
+                        <DropdownMenuItem 
+                          key={wallet.id} 
+                          onClick={() => handleConnect(wallet)}
+                          className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer"
+                        >
+                          <img src={wallet.meta.iconURL} alt={wallet.meta.name} className="w-6 h-6" />
+                          <span>{wallet.meta.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </>
                   ) : (
                     <>
                       <DropdownMenuItem className="hover:bg-gray-100">
                         <span className="text-xs break-all text-gray-500">{address}</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => disconnect()} className="text-red-600 hover:bg-gray-100">
+                      <DropdownMenuItem onClick={handleDisconnect} className="text-red-600 hover:bg-gray-100">
                         <LogOut className="mr-2 h-4 w-4" />
                         Disconnect
                       </DropdownMenuItem>
@@ -221,11 +298,17 @@ export default function CustomerDashboard() {
         {/* Main Content */}
         <div className="container mx-auto p-6">
           <Tabs defaultValue="scan" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-              <TabsTrigger value="scan" className="cursor-pointer" style={{ color: "#5344A9" }}>
+            <TabsList className="grid w-full grid-cols-2 lg:w-[400px] bg-white">
+              <TabsTrigger 
+                value="scan" 
+                className="cursor-pointer data-[state=active]:bg-[#5344A9] data-[state=active]:text-white transition-colors" 
+              >
                 Scan
               </TabsTrigger>
-              <TabsTrigger value="owned" className="cursor-pointer" style={{ color: "#5344A9" }}>
+              <TabsTrigger 
+                value="owned" 
+                className="cursor-pointer data-[state=active]:bg-[#5344A9] data-[state=active]:text-white transition-colors" 
+              >
                 Owned Products
               </TabsTrigger>
             </TabsList>
@@ -347,10 +430,10 @@ export default function CustomerDashboard() {
                           <CardDescription className="text-green-700">
                             {verificationStatus === "registered-by-self" 
                               ? "This product is registered"
-                              : verificationStatus === "not-claimed"
-                              ? "Not yet claimed"
                               : verificationStatus === "claimed-by-self"
                               ? "Claimed by you"
+                              : verificationStatus === "not-claimed"
+                              ? "Not yet claimed"
                               : "Claimed by another user"
                             }
                           </CardDescription>
@@ -432,8 +515,8 @@ export default function CustomerDashboard() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        ownedProducts.map(async (productId) => {
-                          const product = await contract?.call("products", [productId])
+                        ownedProducts.map((productId) => {
+                          const product = ownedProductDetails[productId]
                           return (
                             <TableRow key={productId}>
                               <TableCell className="py-3" style={{ color: "#5344A9" }}>{productId}</TableCell>

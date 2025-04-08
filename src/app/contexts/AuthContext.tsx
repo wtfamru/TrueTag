@@ -15,7 +15,7 @@ interface AuthContextType {
   user: User | null
   userRole: string | null
   loading: boolean
-  signUp: (email: string, password: string, role: string) => Promise<void>
+  signUp: (email: string, password: string, role: string, details: { firstName?: string; lastName?: string; manufacturerName?: string }) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }
@@ -54,11 +54,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe
   }, [])
 
-  const signUp = async (email: string, password: string, role: string) => {
+  const signUp = async (email: string, password: string, role: string, details: { firstName?: string; lastName?: string; manufacturerName?: string }) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password)
     await setDoc(doc(db, "users", userCredential.user.uid), {
       email,
       role,
+      ...(role === "customer" ? {
+        firstName: details.firstName,
+        lastName: details.lastName
+      } : {
+        manufacturerName: details.manufacturerName
+      }),
       createdAt: new Date().toISOString()
     })
   }

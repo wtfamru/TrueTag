@@ -6,7 +6,7 @@ import { useAuth } from "@/app/contexts/AuthContext"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { BarChart3, Package, QrCode, Plus, Search, Download, Filter, MoreVertical, LogOut, User, Wallet, ChevronDown, Check, ChevronsUpDown } from "lucide-react"
-import { useContract, useAddress, useDisconnect, useConnectionStatus, ConnectWallet } from "@thirdweb-dev/react"
+import { useContract, useAddress, useDisconnect, useConnectionStatus, useConnect, useWallet, metamaskWallet, coinbaseWallet, walletConnect } from "@thirdweb-dev/react"
 import ProtectedRoute from "@/app/components/ProtectedRoute"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,11 +26,19 @@ export default function ManufacturerDashboard() {
   const [activeTab, setActiveTab] = useState("products")
   const [userName, setUserName] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false)
   
   const address = useAddress()
   const connectionStatus = useConnectionStatus()
   const disconnect = useDisconnect()
-  const { contract } = useContract("0xe7d10cF2ed92255e0Ec0dcc99DC2277f41A664C9")
+  const connect = useConnect()
+  const { contract } = useContract("0x42452B6b3327197015f6466DA3680137645bf852")
+
+  const wallets = [
+    metamaskWallet(),
+    coinbaseWallet(),
+    walletConnect()
+  ]
 
   const [productName, setProductName] = useState("")
   const [batchNumber, setBatchNumber] = useState("")
@@ -54,7 +62,7 @@ export default function ManufacturerDashboard() {
         const userDoc = await getDoc(doc(db, "users", user.uid))
         if (userDoc.exists()) {
           const userData = userDoc.data()
-          setUserName(`${userData.firstName} ${userData.lastName}`)
+          setUserName(userData.manufacturerName || "")
         }
       }
     }
@@ -196,7 +204,7 @@ export default function ManufacturerDashboard() {
         return
       }
 
-      // Updated contract call with batch number
+      // Use userName (which now contains manufacturerName) in the contract call
       await contract.call("registerProduct", [combinedString, productName, batchNumber, userName])
 
       // Reset form and update lists
@@ -227,6 +235,49 @@ export default function ManufacturerDashboard() {
     }
   }
 
+  // Add useEffect to handle wallet changes
+  useEffect(() => {
+    if (!address) {
+      // Clear product-related states when wallet is disconnected
+      setManufacturerProducts([])
+      setProducts({})
+      setFilteredProducts([])
+      setSelectedProduct("")
+      setSelectedBatch("")
+    }
+  }, [address])
+
+  const handleDisconnect = async () => {
+    try {
+      await disconnect()
+      // Clear states after disconnection
+      setManufacturerProducts([])
+      setProducts({})
+      setFilteredProducts([])
+      setSelectedProduct("")
+      setSelectedBatch("")
+    } catch (error) {
+      console.error("Error disconnecting wallet:", error)
+    }
+  }
+
+  const handleConnect = async (wallet: any) => {
+    try {
+      if (wallet.id === "metamask") {
+        // Request account access and show account selector
+        await window.ethereum?.request({
+          method: 'wallet_requestPermissions',
+          params: [{ eth_accounts: {} }],
+        });
+      }
+      await connect(wallet)
+      setIsWalletModalOpen(false)
+    } catch (error) {
+      console.error("Error connecting wallet:", error)
+      toast.error("Failed to connect wallet")
+    }
+  }
+
   return (
     <ProtectedRoute allowedRoles={["manufacturer"]}>
     <div className="min-h-screen bg-gray-100">
@@ -253,25 +304,26 @@ export default function ManufacturerDashboard() {
                   <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-white shadow-md border rounded-md">
+              <DropdownMenuContent align="end" className="bg-white shadow-md border rounded-md p-2 min-w-[200px]">
                 {connectionStatus !== "connected" ? (
-                  <ConnectWallet 
-                    theme="light"
-                    btnTitle="Connect Wallet"
-                    modalTitle="Connect Your Wallet"
-                    modalSize="wide"
-                    welcomeScreen={{
-                      title: "Connect Your Wallet",
-                      subtitle: "Connect your wallet to interact with TrueTag"
-                    }}
-                    modalTitleIconUrl="/truetag-logo.png"
-                  />
+                  <>
+                    {wallets.map((wallet) => (
+                      <DropdownMenuItem 
+                        key={wallet.id} 
+                        onClick={() => handleConnect(wallet)}
+                        className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer"
+                      >
+                        <img src={wallet.meta.iconURL} alt={wallet.meta.name} className="w-6 h-6" />
+                        <span>{wallet.meta.name}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
                 ) : (
                   <>
                     <DropdownMenuItem className="hover:bg-gray-100">
                       <span className="text-xs break-all text-gray-500">{address}</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => disconnect()} className="text-red-600 hover:bg-gray-100">
+                    <DropdownMenuItem onClick={handleDisconnect} className="text-red-600 hover:bg-gray-100">
                       <LogOut className="mr-2 h-4 w-4" />
                       Disconnect
                     </DropdownMenuItem>
@@ -342,7 +394,7 @@ export default function ManufacturerDashboard() {
                         id="productName"
                         placeholder="Enter product name"
                         value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
+                        onChange={(e) => setProductName(e.target.value.toUpperCase())}
                         style={{ borderColor: "#BB5098" }}
                         required
                       />
@@ -353,7 +405,7 @@ export default function ManufacturerDashboard() {
                         id="batchNumber"
                         placeholder="Enter batch number"
                         value={batchNumber}
-                        onChange={(e) => setBatchNumber(e.target.value)}
+                        onChange={(e) => setBatchNumber(e.target.value.toUpperCase())}
                         style={{ borderColor: "#BB5098" }}
                         required
                       />
