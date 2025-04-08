@@ -14,7 +14,7 @@ A decentralized application (dApp) built with Next.js and ThirdWeb for detecting
 
 - **Frontend Framework**: Next.js 15.2.4
 - **UI Components**: 
-  - Radix UI (Dropdown Menu, Label, Radio Group, Slot, Tabs)
+  - ShadCn and RadixUI(Dropdown Menu, Label, Radio Group, Slot, Tabs)
   - Tailwind CSS
   - Lucide React Icons
 - **Authentication**: Firebase Auth
