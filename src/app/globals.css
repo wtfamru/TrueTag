@@ -79,4 +79,53 @@
   .animate-accordion-up {
     animation: accordion-up 0.2s ease-out;
   }
+
+  /* Brand Logo Marquee Animation */
+  @keyframes marquee {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  .animate-marquee {
+    animation: marquee 40s linear infinite;
+  }
+
+  /* Pause animation on hover */
+  .animate-marquee:hover {
+    animation-play-state: paused;
+  }
+
+  /* Brand Logo Styles */
+  .brand-logo {
+    height: 3.5rem;
+    filter: grayscale(100%);
+    transition: filter 0.3s ease;
+    margin: 0 2rem;
+  }
+
+  .brand-logo:hover {
+    filter: grayscale(0%);
+  }
+
+  /* Brand Logo Container */
+  .brand-container {
+    display: flex;
+    width: 50%;
+    justify-content: space-around;
+    align-items: center;
+  }
+
+  .marquee-container {
+    display: flex;
+    width: 200%;
+    animation: marquee 30s linear infinite;
+  }
+
+  .marquee-container:hover {
+    animation-play-state: paused;
+  }
 }

@@ -1,78 +1,121 @@
-# Fake Product Detection System
+# TrueTag - Blockchain-Based Product Authentication System 🔗
 
-A decentralized application (dApp) built with Next.js and ThirdWeb for detecting and verifying product authenticity using blockchain technology.
+TrueTag is a decentralized application (dApp) that enables manufacturers to register and track their products while allowing customers to verify product authenticity using blockchain technology.
 
-## 🚀 Features
+## Features 🚀
 
-- Modern UI built with Next.js and Tailwind CSS
-- Firebase Authentication and Firestore integration
-- ThirdWeb contract integration for blockchain functionality
-- Smart contract deployed on Sepolia Mumbai testnet
-- Responsive design with Radix UI components
+### Current Implementation ✅
 
-## 🛠️ Tech Stack
+#### Manufacturer Dashboard 🏭
+- **📦 Product Registration**: Register products with unique identifiers combining batch numbers and sequence numbers
+- **📊 Product Management**: View and manage registered products with detailed information
+- **🔍 Search & Filter**: Search products by ID, batch number, or product name
+- **💰 Wallet Integration**: Connect with MetaMask, Coinbase Wallet, or WalletConnect
+- **🔐 User Authentication**: Secure login/registration system with Firebase
+- **📈 Product Status Tracking**: Monitor claimed/unclaimed status of products
 
-- **Frontend Framework**: Next.js 15.2.4
-- **UI Components**: 
-  - ShadCn and RadixUI(Dropdown Menu, Label, Radio Group, Slot, Tabs)
-  - Tailwind CSS
-  - Lucide React Icons
+#### Customer Dashboard 🛒
+- **✅ Product Verification**: Verify product authenticity by entering product ID
+- **🏷️ Product Claims**: Claim ownership of authentic products
+- **📋 Ownership Management**: View and manage owned products
+- **🟢 Verification States**:
+  - Not Registered (🔴 Red): Product not found in the system
+  - Not Claimed (🟡 Yellow): Authentic but unclaimed product
+  - Claimed by Other (🟡 Yellow): Product owned by another user
+  - Authentic (🟢 Green): Product verified and owned by the user
+
+### Smart Contract Features ⛓️
+- Product registration with manufacturer details
+- Ownership tracking and transfer
+- Product verification system
+- Batch management
+- Timestamp tracking for all operations
+
+## Technical Stack 💻
+
+- **Frontend**: Next.js, TypeScript, TailwindCSS, shadcn/ui
+- **Backend**: Firebase (Authentication & Database)
+- **Blockchain**: Ethereum (Smart Contracts)
+- **Web3**: Thirdweb SDK
 - **Authentication**: Firebase Auth
-- **Database**: Firebase Firestore
-- **Blockchain**: 
-  - ThirdWeb SDK
-  - Sepolia Mumbai Testnet
-  - Hardhat for smart contract development
-
-## 📦 Dependencies
-
-### Core Dependencies
-- `@thirdweb-dev/contracts`: ^3.8.0
-- `@thirdweb-dev/react`: ^4.9.4
-- `@thirdweb-dev/sdk`: ^4.0.99
-
-### Development Dependencies
-- `hardhat`: ^2.19.1
-
-## 🚀 Getting Started
+- **Styling**: TailwindCSS with custom theme
+## Getting Started📋
 
 1. Clone the repository
 2. Install dependencies:
    ```bash
    npm install
    ```
-3. Set up your environment variables:
-   - Create a `.env.local` file with your Firebase and ThirdWeb credentials
+3. Set up environment variables in `.env.local`:
+   ```
+   NEXT_PUBLIC_CONTRACT_ADDRESS="your_contract_address"
+   ```
 4. Run the development server:
    ```bash
    npm run dev
    ```
 
-## 📝 Available Scripts
+## Environment Setup
 
-- `npm run dev`: Start the development server
-- `npm run build`: Build the production application
-- `npm run start`: Start the production server
-- `npm run lint`: Run ESLint
-- `npm run build:contract`: Detect ThirdWeb contracts
-- `npm run deploy:contract`: Deploy ThirdWeb contracts
-- `npm run publish:contract`: Publish ThirdWeb contracts
+Create a `.env.local` file in the root directory with the following variables:
 
-## 🔄 Project Status
+```env
+# Firebase Admin SDK Credentials
+FIREBASE_CLIENT_EMAIL="your-client-email@your-project.iam.gserviceaccount.com"
+FIREBASE_PRIVATE_KEY="your-private-key"
 
-### Completed
-- ✅ Smart contract development in Solidity
-- ✅ Contract deployment on Sepolia Mumbai testnet via ThirdWeb SDK
-- ✅ Basic project setup with Next.js and Firebase
-- ✅ UI components and styling implementation
+# Firebase Configuration
+NEXT_PUBLIC_FIREBASE_API_KEY="your-api-key"
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="your-project.firebaseapp.com"
+NEXT_PUBLIC_FIREBASE_PROJECT_ID="your-project-id"
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="your-project.firebasestorage.app"
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="your-sender-id"
+NEXT_PUBLIC_FIREBASE_APP_ID="your-app-id"
 
-### In Progress
-- 🔄 Frontend Integration with Smart Contract
-  - Connect UI with deployed contract
-  - Implement contract interaction methods
-  - Add transaction handling
-  - Implement product verification flow
+# Thirdweb Configuration
+NEXT_PUBLIC_THIRDWEB_CLIENT_ID="your-thirdweb-client-id"
 
-## 📄 License
+# Smart Contract Configuration
+NEXT_PUBLIC_CONTRACT_ADDRESS="your-contract-address"
+```
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+To set up your environment:
+1. Create a Firebase project and get your credentials from the Firebase Console
+2. Set up a Thirdweb account and get your client ID
+3. Deploy your smart contract and get the contract address
+4. Replace all placeholder values with your actual credentials
+
+> **Note**: Never commit your `.env.local` file to version control. Make sure it's included in your `.gitignore` file.
+## Future Implementations 🚧
+
+### 1. QR Code Integration 
+- **📄 QR Code Generation**: Automated QR code generation for registered products
+- **📦 Batch QR Generation**: Generate multiple QR codes for batch products
+- **🔍 QR Code Scanning**: In-app QR code scanner for easy product verification
+- **🎨 Custom QR Design**: Branded QR codes with manufacturer logos
+- **📥 Download Options**: Multiple format options for QR code downloads
+
+### 2. Counterfeit Detection System
+- **🚩 Multiple Scan Detection**: Track and flag suspicious scanning patterns
+- **🌍 Geographical Tracking**: Monitor product verification locations
+- **⚠️ Simultaneous Claims Detection**: Identify multiple claim attempts
+- **🔔 Alert System**: Real-time notifications for suspicious activities
+- **📊 Analytics Dashboard**: 
+  - Scan frequency analysis
+  - Geographical distribution of scans
+  - Time-based scanning patterns
+  - Risk assessment reports
+- **🤖 Automated Responses**: 
+  - Immediate flagging of suspicious products
+  - Notification to manufacturers
+  - Optional product lockdown
+  - Investigation triggers
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a new Pull Request
+

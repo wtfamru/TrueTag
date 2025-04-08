@@ -32,7 +32,7 @@ export default function ManufacturerDashboard() {
   const connectionStatus = useConnectionStatus()
   const disconnect = useDisconnect()
   const connect = useConnect()
-  const { contract } = useContract("0x42452B6b3327197015f6466DA3680137645bf852")
+  const { contract } = useContract(process.env.NEXT_PUBLIC_CONTRACT_ADDRESS)
 
   const wallets = [
     metamaskWallet(),
@@ -264,11 +264,22 @@ export default function ManufacturerDashboard() {
   const handleConnect = async (wallet: any) => {
     try {
       if (wallet.id === "metamask") {
-        // Request account access and show account selector
-        await window.ethereum?.request({
-          method: 'wallet_requestPermissions',
-          params: [{ eth_accounts: {} }],
-        });
+        if (window.ethereum) {
+          try {
+            // First reset permissions to force account selection
+            await window.ethereum.request({
+              method: "wallet_requestPermissions",
+              params: [{ eth_accounts: {} }]
+            })
+            // Then request accounts to connect
+            await window.ethereum.request({
+              method: "eth_requestAccounts"
+            })
+          } catch (err) {
+            console.error("Error requesting MetaMask access:", err)
+            return
+          }
+        }
       }
       await connect(wallet)
       setIsWalletModalOpen(false)

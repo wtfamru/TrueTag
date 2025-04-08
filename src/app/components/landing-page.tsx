@@ -222,17 +222,40 @@ export default function LandingPage() {
         </section>
 
         {/* Trusted By Section */}
-        <section className="py-12 bg-gray-50">
+        <section className="py-12 bg-gray-50 overflow-hidden">
           <div className="container mx-auto px-4 md:px-6">
             <h2 className="text-center text-xl font-medium mb-8" style={{ color: "#7A5197" }}>
               Trusted by leading brands worldwide
             </h2>
-            <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-12 w-32 bg-gray-200 rounded-md flex items-center justify-center">
-                  <span className="text-gray-400 font-medium">LOGO {i}</span>
+            <div className="relative">
+              <div className="marquee-container animate-marquee">
+                {/* First set of logos */}
+                <div className="brand-container">
+                  <img src="/brands/nike.png" alt="Nike" className="brand-logo" />
+                  <img src="/brands/adidas.png" alt="Adidas" className="brand-logo" />
+                  <img src="/brands/rolex.png" alt="Rolex" className="brand-logo" />
+                  <img src="/brands/gucci.png" alt="Gucci" className="brand-logo" />
+                  <img src="/brands/louis-vuitton.png" alt="Louis Vuitton" className="brand-logo" />
+                  <img src="/brands/hermes.png" alt="Hermes" className="brand-logo" />
+                  <img src="/brands/cartier.png" alt="Cartier" className="brand-logo" />
+                  <img src="/brands/prada.png" alt="Prada" className="brand-logo" />
+                  <img src="/brands/burberry.png" alt="Burberry" className="brand-logo" />
+                  <img src="/brands/tiffany.png" alt="Tiffany" className="brand-logo" />
                 </div>
-              ))}
+                {/* Second set of logos (duplicate for seamless loop) */}
+                <div className="brand-container">
+                  <img src="/brands/nike.png" alt="Nike" className="brand-logo" />
+                  <img src="/brands/adidas.png" alt="Adidas" className="brand-logo" />
+                  <img src="/brands/rolex.png" alt="Rolex" className="brand-logo" />
+                  <img src="/brands/gucci.png" alt="Gucci" className="brand-logo" />
+                  <img src="/brands/louis-vuitton.png" alt="Louis Vuitton" className="brand-logo" />
+                  <img src="/brands/hermes.png" alt="Hermes" className="brand-logo" />
+                  <img src="/brands/cartier.png" alt="Cartier" className="brand-logo" />
+                  <img src="/brands/prada.png" alt="Prada" className="brand-logo" />
+                  <img src="/brands/burberry.png" alt="Burberry" className="brand-logo" />
+                  <img src="/brands/tiffany.png" alt="Tiffany" className="brand-logo" />
+                </div>
+              </div>
             </div>
           </div>
         </section>
