@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/contexts/AuthContext"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { BarChart3, Package, QrCode, Plus, Search, Download, Filter, MoreVertical, LogOut, User, Wallet, ChevronDown } from "lucide-react"
+import { BarChart3, Package, QrCode, Plus, Search, Download, Filter, MoreVertical, LogOut, User, Wallet, ChevronDown, Check, ChevronsUpDown } from "lucide-react"
 import { useContract, useAddress, useDisconnect, useConnectionStatus, ConnectWallet } from "@thirdweb-dev/react"
 import ProtectedRoute from "@/app/components/ProtectedRoute"
 import { Button } from "@/components/ui/button"
@@ -15,23 +15,38 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Toaster, toast } from "sonner"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 
 export default function ManufacturerDashboard() {
   const router = useRouter()
   const { user, logout } = useAuth()
-  const [activeTab, setActiveTab] = useState("overview")
+  const [activeTab, setActiveTab] = useState("products")
   const [userName, setUserName] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   
   const address = useAddress()
   const connectionStatus = useConnectionStatus()
   const disconnect = useDisconnect()
-  const { contract } = useContract("0x7f0248CD607633D0EfEC8d4C3C013fbaf71CC804")
+  const { contract } = useContract("0xe7d10cF2ed92255e0Ec0dcc99DC2277f41A664C9")
 
   const [productName, setProductName] = useState("")
   const [batchNumber, setBatchNumber] = useState("")
   const [sequence, setSequence] = useState("")
   const [combinedString, setCombinedString] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [manufacturerProducts, setManufacturerProducts] = useState<string[]>([])
+  const [products, setProducts] = useState<{[key: string]: any}>({})
+  const [searchType, setSearchType] = useState<"id" | "batch" | "name">("id")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filteredProducts, setFilteredProducts] = useState<string[]>([])
+  const [selectedProduct, setSelectedProduct] = useState<string>("")
+  const [selectedBatch, setSelectedBatch] = useState<string>("")
+  const [openProductCombobox, setOpenProductCombobox] = useState(false)
+  const [openBatchCombobox, setOpenBatchCombobox] = useState(false)
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -47,6 +62,28 @@ export default function ManufacturerDashboard() {
   }, [user])
 
   useEffect(() => {
+    const fetchManufacturerProducts = async () => {
+      if (contract && address) {
+        try {
+          const productIds = await contract.call("getManufacturerProducts", [address])
+          setManufacturerProducts(productIds)
+          
+          // Fetch details for each product
+          const productsData: {[key: string]: any} = {}
+          for (const productId of productIds) {
+            const product = await contract.call("products", [productId])
+            productsData[productId] = product
+          }
+          setProducts(productsData)
+        } catch (err) {
+          console.error("Error fetching manufacturer products:", err)
+        }
+      }
+    }
+    fetchManufacturerProducts()
+  }, [contract, address])
+
+  useEffect(() => {
     // Auto-generate combined string when product details change
     if (productName && batchNumber && sequence) {
       // Replace whitespace with hyphens and convert to uppercase
@@ -59,6 +96,69 @@ export default function ManufacturerDashboard() {
       setCombinedString("")
     }
   }, [productName, batchNumber, sequence])
+
+  useEffect(() => {
+    const filterProducts = async () => {
+      if (!searchQuery) {
+        setFilteredProducts(manufacturerProducts)
+        return
+      }
+
+      try {
+        const query = searchQuery.toLowerCase()
+        const allProducts = [...manufacturerProducts]
+        const filtered = []
+
+        for (const productId of allProducts) {
+          const product = products[productId]
+          if (product) {
+            switch (searchType) {
+              case "batch":
+                if (product.batchNumber && 
+                    product.batchNumber.toLowerCase().includes(query)) {
+                  filtered.push(productId)
+                }
+                break
+              case "name":
+                if (product.name && 
+                    product.name.toLowerCase().includes(query)) {
+                  filtered.push(productId)
+                }
+                break
+              case "id":
+                if (productId.toLowerCase().includes(query)) {
+                  filtered.push(productId)
+                }
+                break
+            }
+          }
+        }
+        setFilteredProducts(filtered)
+      } catch (err) {
+        console.error("Error filtering products:", err)
+        setFilteredProducts(manufacturerProducts)
+      }
+    }
+
+    filterProducts()
+  }, [searchQuery, searchType, manufacturerProducts, products])
+
+  // Get unique product names and batch numbers
+  const uniqueProducts = useMemo(() => {
+    const names = new Set<string>()
+    Object.values(products).forEach(product => {
+      if (product.name) names.add(product.name)
+    })
+    return Array.from(names)
+  }, [products])
+
+  const uniqueBatches = useMemo(() => {
+    const batches = new Set<string>()
+    Object.values(products).forEach(product => {
+      if (product.batchNumber) batches.add(product.batchNumber)
+    })
+    return Array.from(batches)
+  }, [products])
 
   const handleCopyCombinedString = () => {
     navigator.clipboard.writeText(combinedString)
@@ -74,9 +174,63 @@ export default function ManufacturerDashboard() {
     }
   }
 
+  const handleRegisterProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!contract || !address || !userName) {
+      setError("Please connect your wallet and ensure you're logged in")
+      return
+    }
+
+    if (!combinedString || !productName || !batchNumber) {
+      setError("Please fill in all required fields")
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      setError("")
+
+      const isRegistered = await contract.call("isProductRegistered", [combinedString])
+      if (isRegistered) {
+        setError("This product is already registered")
+        return
+      }
+
+      // Updated contract call with batch number
+      await contract.call("registerProduct", [combinedString, productName, batchNumber, userName])
+
+      // Reset form and update lists
+      setProductName("")
+      setBatchNumber("")
+      setSequence("")
+      setCombinedString("")
+
+      const productIds = await contract.call("getManufacturerProducts", [address])
+      setManufacturerProducts(productIds)
+      
+      const productsData: {[key: string]: any} = {}
+      for (const productId of productIds) {
+        const product = await contract.call("products", [productId])
+        productsData[productId] = product
+      }
+      setProducts(productsData)
+
+      toast.success("Product registered successfully", {
+        description: `${productName} has been registered with ID: ${combinedString}`,
+        duration: 5000,
+      })
+    } catch (err) {
+      console.error("Error registering product:", err)
+      setError("Failed to register product. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <ProtectedRoute allowedRoles={["manufacturer"]}>
     <div className="min-h-screen bg-gray-100">
+      <Toaster richColors position="top-center" />
       {/* Header */}
       <header className="border-b bg-white px-6 py-4">
         <div className="flex items-center justify-between">
@@ -99,15 +253,25 @@ export default function ManufacturerDashboard() {
                   <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-white">
+              <DropdownMenuContent align="end" className="bg-white shadow-md border rounded-md">
                 {connectionStatus !== "connected" ? (
-                  <ConnectWallet theme="light" />
+                  <ConnectWallet 
+                    theme="light"
+                    btnTitle="Connect Wallet"
+                    modalTitle="Connect Your Wallet"
+                    modalSize="wide"
+                    welcomeScreen={{
+                      title: "Connect Your Wallet",
+                      subtitle: "Connect your wallet to interact with TrueTag"
+                    }}
+                    modalTitleIconUrl="/truetag-logo.png"
+                  />
                 ) : (
                   <>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-gray-100">
                       <span className="text-xs break-all text-gray-500">{address}</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => disconnect()} className="text-red-600">
+                    <DropdownMenuItem onClick={() => disconnect()} className="text-red-600 hover:bg-gray-100">
                       <LogOut className="mr-2 h-4 w-4" />
                       Disconnect
                     </DropdownMenuItem>
@@ -146,14 +310,8 @@ export default function ManufacturerDashboard() {
 
       {/* Main Content */}
       <div className="container mx-auto p-4">
-        <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-[600px] bg-white">
-            <TabsTrigger 
-              value="overview" 
-              className="cursor-pointer data-[state=active]:bg-[#5344A9] data-[state=active]:text-white transition-colors" 
-            >
-              Overview
-            </TabsTrigger>
+        <Tabs defaultValue="products" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2 lg:w-[400px] bg-white">
             <TabsTrigger 
               value="products" 
               className="cursor-pointer data-[state=active]:bg-[#5344A9] data-[state=active]:text-white transition-colors" 
@@ -166,64 +324,7 @@ export default function ManufacturerDashboard() {
             >
               QR Codes
             </TabsTrigger>
-            <TabsTrigger 
-              value="analytics" 
-              className="cursor-pointer data-[state=active]:bg-[#5344A9] data-[state=active]:text-white transition-colors" 
-            >
-              Analytics
-            </TabsTrigger>
           </TabsList>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <StatCard title="Total Products" value="128" icon={<Package />} change="+12% from last month" />
-              <StatCard title="Active QR Codes" value="1,024" icon={<QrCode />} change="+8% from last month" />
-              <StatCard title="Scans This Month" value="5,642" icon={<BarChart3 />} change="+24% from last month" />
-            </div>
-
-            <Card style={{ borderColor: "#BB5098" }}>
-              <CardHeader className="py-4">
-                <CardTitle style={{ color: "#5344A9" }}>Recent Activity</CardTitle>
-                <CardDescription style={{ color: "#7A5197" }}>Your latest product registrations</CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="py-3">Product</TableHead>
-                      <TableHead className="py-3">Batch Number</TableHead>
-                      <TableHead className="py-3">Variant</TableHead>
-                      <TableHead className="py-3">Sequence</TableHead>
-                      <TableHead className="py-3">Date</TableHead>
-                      <TableHead className="py-3">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[1, 2, 3, 4].map((item) => (
-                      <TableRow key={item}>
-                        <TableCell className="py-3" style={{ color: "#5344A9" }}>Product {item}</TableCell>
-                        <TableCell className="py-3" style={{ color: "#7A5197" }}>BATCH-{1000 + item}</TableCell>
-                        <TableCell className="py-3" style={{ color: "#7A5197" }}>V{item}</TableCell>
-                        <TableCell className="py-3" style={{ color: "#7A5197" }}>{item * 100}</TableCell>
-                        <TableCell className="py-3" style={{ color: "#7A5197" }}>{new Date().toLocaleDateString()}</TableCell>
-                        <TableCell className="py-3">
-                          <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                            Active
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-              <CardFooter className="py-3">
-                <Button variant="outline" className="cursor-pointer" style={{ borderColor: "#BB5098", color: "#7A5197" }}>
-                  View All
-                </Button>
-              </CardFooter>
-            </Card>
-          </TabsContent>
 
           {/* Products Tab */}
           <TabsContent value="products" className="space-y-4">
@@ -233,66 +334,71 @@ export default function ManufacturerDashboard() {
                 <CardDescription style={{ color: "#7A5197" }}>Add a new product to your inventory</CardDescription>
               </CardHeader>
               <CardContent>
-                <form className="space-y-3">
+                <form onSubmit={handleRegisterProduct} className="space-y-3">
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-1">
+                      <Label htmlFor="productName" style={{ color: "#5344A9" }}>Product Name</Label>
                       <Input 
-                        placeholder="Product Name"
+                        id="productName"
+                        placeholder="Enter product name"
                         value={productName}
                         onChange={(e) => setProductName(e.target.value)}
                         style={{ borderColor: "#BB5098" }}
-                        className="h-10"
+                        required
                       />
                     </div>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-1">
+                      <Label htmlFor="batchNumber" style={{ color: "#5344A9" }}>Batch Number</Label>
                       <Input 
-                        placeholder="Batch Number"
+                        id="batchNumber"
+                        placeholder="Enter batch number"
                         value={batchNumber}
                         onChange={(e) => setBatchNumber(e.target.value)}
                         style={{ borderColor: "#BB5098" }}
-                        className="h-10"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Input 
-                        type="text" 
-                        placeholder="Sequence"
-                        value={sequence}
-                        onChange={(e) => setSequence(e.target.value)}
-                        style={{ borderColor: "#BB5098" }}
-                        className="h-10"
+                        required
                       />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <div className="relative">
+                    <Label htmlFor="sequence" style={{ color: "#5344A9" }}>Sequence Number</Label>
+                    <Input 
+                      id="sequence"
+                      placeholder="Enter sequence number"
+                      value={sequence}
+                      onChange={(e) => setSequence(e.target.value)}
+                      style={{ borderColor: "#BB5098" }}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="combinedString" style={{ color: "#5344A9" }}>Product ID (Auto-generated)</Label>
+                    <div className="flex gap-2">
                       <Input 
-                        placeholder="Combined String (auto-generated)"
+                        id="combinedString"
                         value={combinedString}
-                        readOnly 
+                        readOnly
                         style={{ borderColor: "#BB5098", backgroundColor: "#f9fafb" }}
-                        className="h-10 pr-24"
                       />
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
                         onClick={handleCopyCombinedString}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
                         style={{ borderColor: "#BB5098", color: "#7A5197" }}
                       >
                         Copy
                       </Button>
                     </div>
                   </div>
+                  {error && (
+                    <div className="text-red-500 text-sm">{error}</div>
+                  )}
                   <Button 
                     type="submit"
-                    className="w-full h-11 text-white cursor-pointer text-base font-semibold hover:opacity-90 transition-opacity" 
-                    style={{ backgroundColor: "#F47F6B" }}
+                    style={{ backgroundColor: "#F47F6B", color: "white" }}
+                    disabled={isLoading || !contract || !address}
+                    className={`w-full ${isLoading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
-                    Register Product
+                    {isLoading ? "Registering..." : "Register Product"}
                   </Button>
                 </form>
               </CardContent>
@@ -305,13 +411,31 @@ export default function ManufacturerDashboard() {
                   <CardDescription style={{ color: "#7A5197" }}>Manage your registered products</CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
-                    <Input 
-                      placeholder="Search by product name, batch number, or variant..." 
-                      className="pl-8 w-[300px]" 
+                  <div className="relative flex items-center gap-2">
+                    <select
+                      className="h-10 rounded-md border px-3 py-2"
                       style={{ borderColor: "#BB5098" }}
-                    />
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value as "id" | "batch" | "name")}
+                    >
+                      <option value="id">Product ID</option>
+                      <option value="batch">Batch Number</option>
+                      <option value="name">Product Name</option>
+                    </select>
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                      <Input 
+                        placeholder={`Search by ${
+                          searchType === 'id' ? 'product ID' : 
+                          searchType === 'batch' ? 'batch number' : 
+                          'product name'
+                        }...`}
+                        className="pl-8 w-[300px]" 
+                        style={{ borderColor: "#BB5098" }}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
                   </div>
                   <Button variant="outline" style={{ borderColor: "#BB5098" }}>
                     <Filter className="h-4 w-4" />
@@ -322,51 +446,64 @@ export default function ManufacturerDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="py-3">Product ID</TableHead>
                       <TableHead className="py-3">Name</TableHead>
-                      <TableHead className="py-3">Category</TableHead>
-                      <TableHead className="py-3">QR Codes</TableHead>
+                      <TableHead className="py-3">Batch Number</TableHead>
                       <TableHead className="py-3">Status</TableHead>
-                      <TableHead className="py-3"></TableHead>
+                      <TableHead className="py-3">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {[1, 2, 3, 4, 5].map((item) => (
-                      <TableRow key={item}>
-                        <TableCell className="py-3" style={{ color: "#5344A9" }}>Product {item}</TableCell>
-                        <TableCell className="py-3" style={{ color: "#7A5197" }}>Electronics</TableCell>
-                        <TableCell className="py-3" style={{ color: "#7A5197" }}>{item * 10}</TableCell>
-                        <TableCell className="py-3">
-                          <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                            Active
-                          </span>
+                    {filteredProducts.map((productId) => (
+                      <TableRow key={productId}>
+                        <TableCell className="py-3" style={{ color: "#5344A9" }}>{productId}</TableCell>
+                        <TableCell className="py-3" style={{ color: "#7A5197" }}>
+                          {products[productId]?.name || "Loading..."}
+                        </TableCell>
+                        <TableCell className="py-3" style={{ color: "#7A5197" }}>
+                          {products[productId]?.batchNumber || "Loading..."}
                         </TableCell>
                         <TableCell className="py-3">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem>Edit</DropdownMenuItem>
-                              <DropdownMenuItem>Generate QR</DropdownMenuItem>
-                              <DropdownMenuItem>View Analytics</DropdownMenuItem>
-                              <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {products[productId]?.isClaimed ? (
+                            <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+                              Claimed
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                              Unclaimed
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <Button
+                            variant="outline"
+                            className="h-8"
+                            style={{ borderColor: "#BB5098", color: "#7A5197" }}
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Download QR
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
+                    {filteredProducts.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-4" style={{ color: "#7A5197" }}>
+                          No products found
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
               <CardFooter className="flex items-center justify-between py-3">
-                <div className="text-sm text-gray-500">Showing 5 of 128 products</div>
+                <div className="text-sm text-gray-500">
+                  {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''} out of {manufacturerProducts.length}
+                </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" style={{ borderColor: "#BB5098" }}>
+                  <Button variant="outline" style={{ borderColor: "#BB5098" }} className="cursor-pointer">
                     Previous
                   </Button>
-                  <Button variant="outline" style={{ borderColor: "#BB5098" }}>
+                  <Button variant="outline" style={{ borderColor: "#BB5098" }} className="cursor-pointer">
                     Next
                   </Button>
                 </div>
@@ -385,39 +522,119 @@ export default function ManufacturerDashboard() {
                 <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="qr-product" style={{ color: "#5344A9" }}>
+                      <Label htmlFor="product-name" style={{ color: "#5344A9" }}>
                         Select Product
                       </Label>
-                      <select
-                        id="qr-product"
-                        className="w-full rounded-md border p-2 cursor-pointer"
-                        style={{ borderColor: "#BB5098" }}
-                      >
-                        <option>Product 1</option>
-                        <option>Product 2</option>
-                        <option>Product 3</option>
-                      </select>
+                      <Popover open={openProductCombobox} onOpenChange={setOpenProductCombobox}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={openProductCombobox}
+                            className="w-full justify-between"
+                            style={{ borderColor: "#BB5098" }}
+                          >
+                            {selectedProduct || "Select product..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                          className="w-[var(--radix-popover-trigger-width)] p-0 bg-white" 
+                          style={{ width: "100%" }}
+                        >
+                          <Command>
+                            <CommandInput placeholder="Search products..." />
+                            <CommandEmpty>No product found.</CommandEmpty>
+                            <CommandGroup>
+                              {uniqueProducts.map((name) => (
+                                <CommandItem
+                                  key={name}
+                                  value={name}
+                                  onSelect={(currentValue) => {
+                                    setSelectedProduct(currentValue === selectedProduct ? "" : currentValue)
+                                    setOpenProductCombobox(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedProduct === name ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="qr-quantity" style={{ color: "#5344A9" }}>
-                        Quantity
+                      <Label htmlFor="batch-number" style={{ color: "#5344A9" }}>
+                        Batch Number
                       </Label>
-                      <Input id="qr-quantity" type="number" defaultValue="10" style={{ borderColor: "#BB5098" }} />
+                      <Popover open={openBatchCombobox} onOpenChange={setOpenBatchCombobox}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={openBatchCombobox}
+                            className="w-full justify-between"
+                            style={{ borderColor: "#BB5098" }}
+                          >
+                            {selectedBatch || "Select batch..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                          className="w-[var(--radix-popover-trigger-width)] p-0 bg-white" 
+                          style={{ width: "100%" }}
+                        >
+                          <Command>
+                            <CommandInput placeholder="Search batches..." />
+                            <CommandEmpty>No batch found.</CommandEmpty>
+                            <CommandGroup>
+                              {uniqueBatches.map((batch) => (
+                                <CommandItem
+                                  key={batch}
+                                  value={batch}
+                                  onSelect={(currentValue) => {
+                                    setSelectedBatch(currentValue === selectedBatch ? "" : currentValue)
+                                    setOpenBatchCombobox(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedBatch === batch ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {batch}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
-                    <Button className="text-white cursor-pointer" style={{ backgroundColor: "#F47F6B" }}>
-                      Generate QR Codes
+
+                    <Button 
+                      className="text-white cursor-pointer w-full" 
+                      style={{ backgroundColor: "#F47F6B" }}
+                      disabled={!selectedProduct || !selectedBatch}
+                    >
+                      <Download className="mr-2 h-4 w-4" /> Generate QR Codes
                     </Button>
                   </div>
-                  <div className="flex flex-col items-center justify-center space-y-4">
+
+                  <div className="flex flex-col items-center justify-center">
                     <div
                       className="flex h-48 w-48 items-center justify-center rounded-lg border-2 bg-white"
                       style={{ borderColor: "#BB5098" }}
                     >
                       <QrCode className="h-32 w-32" style={{ color: "#5344A9" }} />
                     </div>
-                    <Button variant="outline" className="w-full" style={{ borderColor: "#BB5098", color: "#7A5197" }}>
-                      <Download className="mr-2 h-4 w-4" /> Download Sample
-                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -461,87 +678,6 @@ export default function ManufacturerDashboard() {
                 </Table>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* Analytics Tab */}
-          <TabsContent value="analytics" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <StatCard title="Total Scans" value="24,128" icon={<QrCode />} change="+18% from last month" />
-              <StatCard title="Unique Users" value="8,432" icon={<Package />} change="+12% from last month" />
-              <StatCard title="Verification Rate" value="98.7%" icon={<BarChart3 />} change="+2.3% from last month" />
-            </div>
-
-            <Card style={{ borderColor: "#BB5098" }}>
-              <CardHeader className="py-4">
-                <CardTitle style={{ color: "#5344A9" }}>Scan Analytics</CardTitle>
-                <CardDescription style={{ color: "#7A5197" }}>Scan activity over time</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80 w-full rounded-lg border" style={{ borderColor: "#BB5098" }}>
-                  <div className="flex h-full items-center justify-center">
-                    <p style={{ color: "#7A5197" }}>Chart visualization would go here</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card style={{ borderColor: "#BB5098" }}>
-                <CardHeader className="py-4">
-                  <CardTitle style={{ color: "#5344A9" }}>Top Products</CardTitle>
-                  <CardDescription style={{ color: "#7A5197" }}>Most scanned products</CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="py-3">Product</TableHead>
-                        <TableHead className="py-3">Scans</TableHead>
-                        <TableHead className="py-3">Trend</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {[1, 2, 3, 4].map((item) => (
-                        <TableRow key={item}>
-                          <TableCell className="py-3" style={{ color: "#5344A9" }}>Product {item}</TableCell>
-                          <TableCell className="py-3" style={{ color: "#7A5197" }}>{(5 - item) * 1000}</TableCell>
-                          <TableCell className="py-3" style={{ color: "#7A5197" }}>
-                            {item % 2 === 0 ? "↑" : "↓"} {item * 5}%
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-
-              <Card style={{ borderColor: "#BB5098" }}>
-                <CardHeader className="py-4">
-                  <CardTitle style={{ color: "#5344A9" }}>Geographic Distribution</CardTitle>
-                  <CardDescription style={{ color: "#7A5197" }}>Scan locations</CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="py-3">Location</TableHead>
-                        <TableHead className="py-3">Scans</TableHead>
-                        <TableHead className="py-3">Percentage</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {["United States", "Europe", "Asia", "Other"].map((location, index) => (
-                        <TableRow key={location}>
-                          <TableCell className="py-3" style={{ color: "#5344A9" }}>{location}</TableCell>
-                          <TableCell className="py-3" style={{ color: "#7A5197" }}>{(4 - index) * 1000}</TableCell>
-                          <TableCell className="py-3" style={{ color: "#7A5197" }}>{Math.floor(40 - index * 10)}%</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
         </Tabs>
       </div>

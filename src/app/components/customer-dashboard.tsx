@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Camera, QrCode, ShieldAlert, CheckCircle, Search, ChevronRight, AlertTriangle, LogOut, User, Wallet, ChevronDown } from "lucide-react"
+import { Camera, QrCode, ShieldAlert, CheckCircle, Search, ChevronRight, AlertTriangle, LogOut, User, Wallet, ChevronDown, XCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/contexts/AuthContext"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useContract, useAddress, useDisconnect, useConnectionStatus, ConnectWallet } from "@thirdweb-dev/react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import ProtectedRoute from "@/app/components/ProtectedRoute"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export default function CustomerDashboard() {
   const router = useRouter()
@@ -23,11 +25,16 @@ export default function CustomerDashboard() {
   const [isScanning, setIsScanning] = useState(false)
   const [userName, setUserName] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [productId, setProductId] = useState("")
+  const [verificationStatus, setVerificationStatus] = useState<"neutral" | "not-registered" | "not-claimed" | "claimed-by-other" | "claimed-by-self" | "registered-by-self">("neutral")
+  const [productDetails, setProductDetails] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [ownedProducts, setOwnedProducts] = useState<string[]>([])
   
   const address = useAddress()
   const connectionStatus = useConnectionStatus()
   const disconnect = useDisconnect()
-  const { contract } = useContract("0x7f0248CD607633D0EfEC8d4C3C013fbaf71CC804")
+  const { contract } = useContract("0xe7d10cF2ed92255e0Ec0dcc99DC2277f41A664C9")
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -41,6 +48,86 @@ export default function CustomerDashboard() {
     }
     fetchUserDetails()
   }, [user])
+
+  useEffect(() => {
+    const fetchOwnedProducts = async () => {
+      if (contract && address) {
+        try {
+          const products = await contract.call("getOwnerProducts", [address])
+          setOwnedProducts(products)
+        } catch (err) {
+          console.error("Error fetching owned products:", err)
+        }
+      }
+    }
+    fetchOwnedProducts()
+  }, [contract, address])
+
+  const handleVerifyProduct = async () => {
+    if (!contract || !address) {
+      toast.error("Please connect your wallet first")
+      return
+    }
+
+    if (!productId) {
+      toast.error("Please enter a product ID")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const product = await contract.call("products", [productId])
+      setProductDetails(product)
+
+      if (!product.isRegistered) {
+        setVerificationStatus("not-registered")
+        setProductDetails(null)
+        return
+      }
+
+      const isClaimed = await contract.call("isProductClaimed", [productId])
+
+      if (product.manufacturer === address) {
+        setVerificationStatus("registered-by-self")
+      } else if (!isClaimed) {
+        setVerificationStatus("not-claimed")
+      } else if (product.owner === address) {
+        setVerificationStatus("claimed-by-self")
+      } else {
+        setVerificationStatus("claimed-by-other")
+      }
+    } catch (err) {
+      console.error("Error verifying product:", err)
+      toast.error("Error verifying product. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleClaimProduct = async () => {
+    if (!contract || !address || !userName) {
+      toast.error("Please connect your wallet and ensure you're logged in")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      await contract.call("claimProduct", [productId, userName])
+      toast.success("Product claimed successfully!")
+      
+      // Refresh owned products
+      const products = await contract.call("getOwnerProducts", [address])
+      setOwnedProducts(products)
+      
+      // Refresh verification status
+      await handleVerifyProduct()
+    } catch (err) {
+      console.error("Error claiming product:", err)
+      toast.error("Failed to claim product. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -76,15 +163,25 @@ export default function CustomerDashboard() {
                     <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-white">
+                <DropdownMenuContent align="end" className="bg-white shadow-md border rounded-md">
                   {connectionStatus !== "connected" ? (
-                    <ConnectWallet theme="light" />
+                    <ConnectWallet 
+                      theme="light"
+                      btnTitle="Connect Wallet"
+                      modalTitle="Connect Your Wallet"
+                      modalSize="wide"
+                      welcomeScreen={{
+                        title: "Connect Your Wallet",
+                        subtitle: "Connect your wallet to interact with TrueTag"
+                      }}
+                      modalTitleIconUrl="/truetag-logo.png"
+                    />
                   ) : (
                     <>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem className="hover:bg-gray-100">
                         <span className="text-xs break-all text-gray-500">{address}</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => disconnect()} className="text-red-600">
+                      <DropdownMenuItem onClick={() => disconnect()} className="text-red-600 hover:bg-gray-100">
                         <LogOut className="mr-2 h-4 w-4" />
                         Disconnect
                       </DropdownMenuItem>
@@ -174,92 +271,137 @@ export default function CustomerDashboard() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Input placeholder="Enter product code" style={{ borderColor: "#BB5098" }} />
+                      <Input 
+                        placeholder="Enter product code" 
+                        style={{ borderColor: "#BB5098" }}
+                        value={productId}
+                        onChange={(e) => setProductId(e.target.value)}
+                      />
                       <Button 
                         variant="outline" 
                         className="cursor-pointer" 
                         style={{ borderColor: "#BB5098", color: "#7A5197" }}
+                        onClick={handleVerifyProduct}
+                        disabled={isLoading}
                       >
-                        Verify
+                        {isLoading ? "Verifying..." : "Verify"}
                       </Button>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="grid gap-6 md:grid-cols-2">
-                <Card style={{ borderColor: "#BB5098", backgroundColor: `rgba(245, 198, 60, 0.2)` }}>
+              <div className="grid gap-6 md:grid-1">
+                <Card 
+                  style={{ 
+                    borderColor: "#BB5098", 
+                    backgroundColor: verificationStatus === "neutral" 
+                      ? "white"
+                      : verificationStatus === "not-registered" 
+                      ? "#FEE2E2" 
+                      : verificationStatus === "not-claimed"
+                      ? "#FEF3C7"
+                      : verificationStatus === "claimed-by-other"
+                      ? "#FEF3C7"
+                      : "#DCFCE7"
+                  }}
+                >
                   <CardHeader className="flex flex-row items-center gap-4">
-                    <CheckCircle className="h-8 w-8" style={{ color: "#5344A9" }} />
-                    <div>
-                      <CardTitle style={{ color: "#5344A9" }}>Authentic Product</CardTitle>
-                      <CardDescription style={{ color: "#7A5197" }}>Last verified: Today at 2:30 PM</CardDescription>
-                    </div>
+                    {verificationStatus === "neutral" ? (
+                      <>
+                        <QrCode className="h-8 w-8" style={{ color: "#5344A9" }} />
+                        <div>
+                          <CardTitle style={{ color: "#5344A9" }}>Product Verification</CardTitle>
+                          <CardDescription style={{ color: "#7A5197" }}>Enter any product ID to verify</CardDescription>
+                        </div>
+                      </>
+                    ) : verificationStatus === "not-registered" ? (
+                      <>
+                        <XCircle className="h-8 w-8 text-red-600" />
+                        <div>
+                          <CardTitle className="text-red-600">Product Not Authentic</CardTitle>
+                          <CardDescription className="text-red-700">This product ID is not registered in our system</CardDescription>
+                        </div>
+                      </>
+                    ) : verificationStatus === "not-claimed" ? (
+                      <>
+                        <AlertTriangle className="h-8 w-8 text-yellow-600" />
+                        <div>
+                          <CardTitle className="text-yellow-600">Product Not Claimed</CardTitle>
+                          <CardDescription className="text-yellow-700">This product is authentic but hasn't been claimed yet</CardDescription>
+                        </div>
+                      </>
+                    ) : verificationStatus === "claimed-by-other" ? (
+                      <>
+                        <AlertTriangle className="h-8 w-8 text-yellow-600" />
+                        <div>
+                          <CardTitle className="text-yellow-600">Product Might Not Be Authentic</CardTitle>
+                          <CardDescription className="text-yellow-700">This product is already claimed by another owner</CardDescription>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-8 w-8 text-green-600" />
+                        <div>
+                          <CardTitle className="text-green-600">Authentic Product</CardTitle>
+                          <CardDescription className="text-green-700">
+                            {verificationStatus === "registered-by-self" 
+                              ? "This product is registered"
+                              : verificationStatus === "not-claimed"
+                              ? "Not yet claimed"
+                              : verificationStatus === "claimed-by-self"
+                              ? "Claimed by you"
+                              : "Claimed by another user"
+                            }
+                          </CardDescription>
+                        </div>
+                      </>
+                    )}
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-medium" style={{ color: "#5344A9" }}>
-                          Product Details
-                        </h3>
-                        <p style={{ color: "#7A5197" }}>Premium Headphones XZ-400</p>
+                    {verificationStatus !== "neutral" && verificationStatus !== "not-registered" && productDetails && (
+                      <div className="space-y-4">
+                        <div>
+                          <h3 className="font-medium text-gray-700">Product Details</h3>
+                          <p className="text-gray-600">{productDetails.name}</p>
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-700">Manufacturer</h3>
+                          <p className="text-gray-600">{productDetails.manufacturerName}</p>
+                          <p className="text-xs text-gray-500 mt-1">Address: {productDetails.manufacturer}</p>
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-700">Batch Number</h3>
+                          <p className="text-gray-600">{productDetails.batchNumber}</p>
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-700">Registration Date</h3>
+                          <p className="text-gray-600">
+                            {new Date(productDetails.registrationTimestamp * 1000).toLocaleString()}
+                          </p>
+                        </div>
+                        {verificationStatus === "claimed-by-other" && (
+                          <div>
+                            <h3 className="font-medium text-gray-700">Current Owner</h3>
+                            <p className="text-gray-600">{productDetails.ownerName}</p>
+                            <p className="text-xs text-gray-500 mt-1">Address: {productDetails.owner}</p>
+                          </div>
+                        )}
+                        {verificationStatus === "not-claimed" && (
+                          <div className="mt-6">
+                            <Button 
+                              className="w-full text-white cursor-pointer"
+                              style={{ backgroundColor: "#F47F6B" }}
+                              onClick={handleClaimProduct}
+                              disabled={isLoading}
+                            >
+                              {isLoading ? "Claiming..." : "Claim This Product"}
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <h3 className="font-medium" style={{ color: "#5344A9" }}>
-                          Manufacturer
-                        </h3>
-                        <p style={{ color: "#7A5197" }}>AudioTech Industries</p>
-                      </div>
-                      <div>
-                        <h3 className="font-medium" style={{ color: "#5344A9" }}>
-                          Date of Manufacture
-                        </h3>
-                        <p style={{ color: "#7A5197" }}>January 15, 2023</p>
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
-                  <CardFooter>
-                    <Button variant="outline" className="w-full" style={{ borderColor: "#BB5098", color: "#7A5197" }}>
-                      View Full Details <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </CardFooter>
-                </Card>
-
-                <Card style={{ borderColor: "#BB5098", backgroundColor: `rgba(245, 198, 60, 0.2)` }}>
-                  <CardHeader className="flex flex-row items-center gap-4">
-                    <ShieldAlert className="h-8 w-8" style={{ color: "#5344A9" }} />
-                    <div>
-                      <CardTitle style={{ color: "#5344A9" }}>Warranty Information</CardTitle>
-                      <CardDescription style={{ color: "#7A5197" }}>Valid until January 15, 2025</CardDescription>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-medium" style={{ color: "#5344A9" }}>
-                          Warranty Type
-                        </h3>
-                        <p style={{ color: "#7A5197" }}>Extended Manufacturer Warranty</p>
-                      </div>
-                      <div>
-                        <h3 className="font-medium" style={{ color: "#5344A9" }}>
-                          Coverage
-                        </h3>
-                        <p style={{ color: "#7A5197" }}>Parts and Labor</p>
-                      </div>
-                      <div>
-                        <h3 className="font-medium" style={{ color: "#5344A9" }}>
-                          Support Contact
-                        </h3>
-                        <p style={{ color: "#7A5197" }}>support@audiotech.com</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter>
-                    <Button variant="outline" className="w-full" style={{ borderColor: "#BB5098", color: "#7A5197" }}>
-                      Register Warranty <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </CardFooter>
                 </Card>
               </div>
             </TabsContent>
@@ -268,64 +410,53 @@ export default function CustomerDashboard() {
             <TabsContent value="owned" className="space-y-6">
               <Card style={{ borderColor: "#BB5098" }}>
                 <CardHeader>
-                  <CardTitle style={{ color: "#5344A9" }}>Claim Product</CardTitle>
-                  <CardDescription style={{ color: "#7A5197" }}>Enter product code to claim ownership</CardDescription>
+                  <CardTitle style={{ color: "#5344A9" }}>Owned Products</CardTitle>
+                  <CardDescription style={{ color: "#7A5197" }}>Products owned by your wallet</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2 mb-8">
-                    <Input placeholder="Enter product code" style={{ borderColor: "#BB5098" }} />
-                    <Button 
-                      className="text-white cursor-pointer"
-                      style={{ backgroundColor: "#F47F6B" }}
-                    >
-                      Claim
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card style={{ borderColor: "#BB5098" }}>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle style={{ color: "#5344A9" }}>Owned Products</CardTitle>
-                    <CardDescription style={{ color: "#7A5197" }}>Products owned by your wallet</CardDescription>
-                  </div>
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
-                    <Input placeholder="Search products..." className="pl-8" style={{ borderColor: "#BB5098" }} />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-lg border" style={{ borderColor: "#BB5098" }}>
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b" style={{ borderColor: "#BB5098" }}>
-                          <th className="p-4 text-left" style={{ color: "#5344A9" }}>Product Name</th>
-                          <th className="p-4 text-left" style={{ color: "#5344A9" }}>Token ID</th>
-                          <th className="p-4 text-left" style={{ color: "#5344A9" }}>Claim Date</th>
-                          <th className="p-4 text-left" style={{ color: "#5344A9" }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {/* Example row - you'll need to map through actual data */}
-                        <tr className="border-b" style={{ borderColor: "#BB5098" }}>
-                          <td className="p-4" style={{ color: "#7A5197" }}>Premium Headphones XZ-400</td>
-                          <td className="p-4" style={{ color: "#7A5197" }}>#123456</td>
-                          <td className="p-4" style={{ color: "#7A5197" }}>2024-03-20</td>
-                          <td className="p-4">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="cursor-pointer"
-                              style={{ borderColor: "#BB5098", color: "#7A5197" }}
-                            >
-                              View Details
-                            </Button>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="py-3">Product ID</TableHead>
+                        <TableHead className="py-3">Name</TableHead>
+                        <TableHead className="py-3">Batch Number</TableHead>
+                        <TableHead className="py-3">Manufacturer</TableHead>
+                        <TableHead className="py-3">Date Claimed</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ownedProducts.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-4" style={{ color: "#7A5197" }}>
+                            No owned products found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        ownedProducts.map(async (productId) => {
+                          const product = await contract?.call("products", [productId])
+                          return (
+                            <TableRow key={productId}>
+                              <TableCell className="py-3" style={{ color: "#5344A9" }}>{productId}</TableCell>
+                              <TableCell className="py-3" style={{ color: "#7A5197" }}>
+                                {product?.name || "Loading..."}
+                              </TableCell>
+                              <TableCell className="py-3" style={{ color: "#7A5197" }}>
+                                {product?.batchNumber || "Loading..."}
+                              </TableCell>
+                              <TableCell className="py-3" style={{ color: "#7A5197" }}>
+                                {product?.manufacturerName || "Loading..."}
+                              </TableCell>
+                              <TableCell className="py-3" style={{ color: "#7A5197" }}>
+                                {product?.registrationTimestamp 
+                                  ? new Date(product.registrationTimestamp * 1000).toLocaleDateString()
+                                  : "Loading..."}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
             </TabsContent>

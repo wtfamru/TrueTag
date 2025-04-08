@@ -1,9 +1,9 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
-    "C:\\Users\\Amruthesh\\Desktop\\truetag-contract\\contracts\\ProductRegistry.sol": {
-      "lastModificationDate": 1743448177053,
-      "contentHash": "b021b0dea9268fcf3fc708657fede433",
+    "C:\\Users\\Amruthesh\\Desktop\\truetag\\contracts\\ProductRegistry.sol": {
+      "lastModificationDate": 1744135673853,
+      "contentHash": "1b43fb331e1b7e1b6c035183f9328f62",
       "sourceName": "contracts/ProductRegistry.sol",
       "solcConfig": {
         "version": "0.8.23",

@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 contract ProductRegistry {
     struct Product {
         string name;
+        string batchNumber;
         address manufacturer;
         string manufacturerName;
         address owner;
@@ -17,25 +18,31 @@ contract ProductRegistry {
     mapping(string => Product) public products;
     mapping(address => string[]) public manufacturerProducts;
     mapping(address => string[]) public ownerProducts;
+    mapping(string => string[]) public batchProducts; // Maps batch numbers to product IDs
 
     // Events
-    event ProductRegistered(string productId, address manufacturer, uint256 timestamp);
+    event ProductRegistered(string productId, string batchNumber, address manufacturer, uint256 timestamp);
     event ProductClaimed(string productId, address owner, uint256 timestamp);
     event ManufacturerNameUpdated(string productId, string newName);
 
-    // Register product with just ID and name
+    // Register product with ID, name, batch number, and manufacturer name
     function registerProduct(
         string memory productId,
-        string memory name
+        string memory name,
+        string memory batchNumber,
+        string memory manufacturerName
     ) public {
         require(!products[productId].isRegistered, "Product already registered");
+        require(bytes(manufacturerName).length > 0, "Manufacturer name cannot be empty");
+        require(bytes(batchNumber).length > 0, "Batch number cannot be empty");
         
         uint256 currentTimestamp = block.timestamp;
         
         products[productId] = Product({
             name: name,
+            batchNumber: batchNumber,
             manufacturer: msg.sender,
-            manufacturerName: "",
+            manufacturerName: manufacturerName,
             owner: address(0),
             ownerName: "",
             isRegistered: true,
@@ -44,7 +51,9 @@ contract ProductRegistry {
         });
 
         manufacturerProducts[msg.sender].push(productId);
-        emit ProductRegistered(productId, msg.sender, currentTimestamp);
+        batchProducts[batchNumber].push(productId);
+        
+        emit ProductRegistered(productId, batchNumber, msg.sender, currentTimestamp);
     }
 
     // Claim product by new owner
@@ -66,19 +75,6 @@ contract ProductRegistry {
             ownerProducts[msg.sender].push(productId);
             emit ProductClaimed(productId, msg.sender, currentTimestamp);
         }
-    }
-
-    // Set manufacturer name (added as requested)
-    function setManufacturerName(
-        string memory productId,
-        string memory manufacturerName
-    ) public {
-        require(products[productId].isRegistered, "Product not registered");
-        require(products[productId].manufacturer == msg.sender, "Only manufacturer can set name");
-        require(bytes(manufacturerName).length > 0, "Name cannot be empty");
-        
-        products[productId].manufacturerName = manufacturerName;
-        emit ManufacturerNameUpdated(productId, manufacturerName);
     }
 
     // Get registration date (YYYY-MM-DD format)
@@ -151,5 +147,27 @@ contract ProductRegistry {
 
     function getOwnerProducts(address owner) public view returns (string[] memory) {
         return ownerProducts[owner];
+    }
+
+    // Check if a product is registered
+    function isProductRegistered(string memory productId) public view returns (bool) {
+        return products[productId].isRegistered;
+    }
+
+    // Fetch products by batch number
+    function getProductsByBatch(string memory batchNumber) public view returns (string[] memory) {
+        return batchProducts[batchNumber];
+    }
+
+    // Get batch number for a product
+    function getProductBatch(string memory productId) public view returns (string memory) {
+        require(products[productId].isRegistered, "Product not registered");
+        return products[productId].batchNumber;
+    }
+
+    // Check if a product is claimed
+    function isProductClaimed(string memory productId) public view returns (bool) {
+        require(products[productId].isRegistered, "Product not registered");
+        return products[productId].isClaimed;
     }
 }
