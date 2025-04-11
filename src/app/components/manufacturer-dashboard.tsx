@@ -6,7 +6,7 @@ import { useAuth } from "@/app/contexts/AuthContext"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { BarChart3, Package, QrCode, Plus, Search, Download, Filter, MoreVertical, LogOut, User, Wallet, ChevronDown, Check, ChevronsUpDown } from "lucide-react"
-import { useContract, useAddress, useDisconnect, useConnectionStatus, useConnect, useWallet, metamaskWallet, coinbaseWallet, walletConnect } from "@thirdweb-dev/react"
+import { useContract, useAddress, useDisconnect, useConnectionStatus, useConnect, useWallet, metamaskWallet, coinbaseWallet, walletConnect, ContractEvent } from "@thirdweb-dev/react"
 import ProtectedRoute from "@/app/components/ProtectedRoute"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -288,6 +288,94 @@ export default function ManufacturerDashboard() {
       toast.error("Failed to connect wallet")
     }
   }
+
+  // Add event listener for blockchain events
+  useEffect(() => {
+    if (!contract) return;
+
+    const handleProductRegistered = async (event: ContractEvent) => {
+      try {
+        if (!event.data) {
+          console.error("No data in ProductRegistered event");
+          return;
+        }
+
+        const { productId, batchNumber, manufacturer, timestamp } = event.data;
+        
+        if (!manufacturer || !address) {
+          console.error("Missing manufacturer or address data");
+          return;
+        }
+
+        if (manufacturer.toLowerCase() === address.toLowerCase()) {
+          // Refresh the products list
+          const productIds = await contract.call("getManufacturerProducts", [address]);
+          setManufacturerProducts(productIds);
+          
+          // Fetch details for each product
+          const productsData: {[key: string]: any} = {};
+          for (const productId of productIds) {
+            const product = await contract.call("products", [productId]);
+            productsData[productId] = product;
+          }
+          setProducts(productsData);
+        }
+      } catch (error) {
+        console.error("Error handling ProductRegistered event:", error);
+      }
+    };
+
+    const handleProductClaimed = async (event: ContractEvent) => {
+      try {
+        if (!event.data) {
+          console.error("No data in ProductClaimed event");
+          return;
+        }
+
+        const { productId, owner, timestamp } = event.data;
+        
+        if (!productId || !owner) {
+          console.error("Missing productId or owner data");
+          return;
+        }
+
+        // Refresh the products list if the claimed product belongs to the current manufacturer
+        const product = await contract.call("products", [productId]);
+        
+        if (!product || !product.manufacturer || !address) {
+          console.error("Missing product or manufacturer data");
+          return;
+        }
+
+        if (product.manufacturer.toLowerCase() === address.toLowerCase()) {
+          const productIds = await contract.call("getManufacturerProducts", [address]);
+          setManufacturerProducts(productIds);
+          
+          // Update the specific product's claimed status
+          setProducts(prev => ({
+            ...prev,
+            [productId]: {
+              ...prev[productId],
+              isClaimed: true,
+              owner: owner
+            }
+          }));
+        }
+      } catch (error) {
+        console.error("Error handling ProductClaimed event:", error);
+      }
+    };
+
+    // Subscribe to events
+    contract.events.addEventListener("ProductRegistered", handleProductRegistered);
+    contract.events.addEventListener("ProductClaimed", handleProductClaimed);
+
+    // Cleanup
+    return () => {
+      contract.events.removeEventListener("ProductRegistered", handleProductRegistered);
+      contract.events.removeEventListener("ProductClaimed", handleProductClaimed);
+    };
+  }, [contract, address]);
 
   return (
     <ProtectedRoute allowedRoles={["manufacturer"]}>
