@@ -21,8 +21,8 @@ TrueTag is a decentralized application (dApp) that enables manufacturers to regi
 - **🟢 Verification States**:
   - Not Registered (🔴 Red): Product not found in the system
   - Not Claimed (🟡 Yellow): Authentic but unclaimed product
-  - Claimed by Other (🟡 Yellow): Product owned by another user
-  - Authentic (🟢 Green): Product verified and owned by the user
+  - Claimed by Other (🟡 Yellow): Product owned by another users
+  - Authentic (🟢 Green): Product verified and owned by the users
 
 ### Smart Contract Features ⛓️
 - Product registration with manufacturer details
